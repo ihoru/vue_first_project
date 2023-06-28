@@ -1,18 +1,11 @@
 <script lang="ts" setup>
-import {onMounted, onUnmounted, ref} from "vue";
+import {onMounted, onUnmounted, reactive, ref} from "vue";
 import {useRefHistory} from "@vueuse/core";
+import HelpBlock from "@/components/HelpBlock.vue";
+import Task from "@/models/task"
 
 function randomId(length = 10) {
   return Math.random().toString(36).substring(2, length + 2);
-}
-
-class Task {
-  constructor(
-      public id: string,
-      public title: string,
-      public done: boolean = false,
-  ) {
-  }
 }
 
 const tasks = ref([
@@ -22,9 +15,7 @@ const tasks = ref([
   new Task(randomId(), 'test4: ' + randomId()),
 ]);
 
-// {string: HTMLInputElement}
-const taskRefs = ref({});
-
+const taskRefs = reactive<{ [key: string]: HTMLInputElement }>({});
 const {undo, redo, canUndo, canRedo} = useRefHistory(tasks, {
   deep: true,
   capacity: 10,
@@ -32,7 +23,7 @@ const {undo, redo, canUndo, canRedo} = useRefHistory(tasks, {
 
 
 function setItemRef(task: Task, el: HTMLInputElement) {
-  taskRefs.value[task.id] = el;
+  taskRefs[task.id] = el;
 }
 
 function tasksReorder() {
@@ -52,11 +43,10 @@ function taskCheck(task: Task, index: number, focus: boolean = false) {
   const isDone = task.done;
   task.done = !task.done;
   if (!isDone) {
-    tasksReorder();
     setTimeout(() => {
       const newTask = tasks.value[index];
       if (newTask.id !== task.id) {
-        taskRefs.value[newTask.id].focus();
+        taskRefs[newTask.id].focus();
       }
     });
   }
@@ -64,7 +54,6 @@ function taskCheck(task: Task, index: number, focus: boolean = false) {
   // tasks.value.splice(index, 1);
   // console.log(history)
 }
-
 
 function taskDelete(task: Task, index: number, focus: boolean = false) {
   tasks.value.splice(index, 1);
@@ -80,7 +69,7 @@ function taskMoveUp(task: Task, index: number, focus: boolean = false) {
   tasks.value[index - 1] = task;
   if (focus) {
     setTimeout(function () {
-      taskRefs.value[task.id].focus();
+      taskRefs[task.id].focus();
     });
   }
 }
@@ -93,7 +82,7 @@ function taskMoveDown(task: Task, index: number, focus: boolean = false) {
   tasks.value[index + 1] = task;
   if (focus) {
     setTimeout(function () {
-      taskRefs.value[task.id].focus();
+      taskRefs[task.id].focus();
     });
   }
 }
@@ -109,7 +98,7 @@ function taskMoveTop(task: Task, index: number, focus: boolean = false) {
   tasks.value = [task, ...tasks.value];
   if (focus) {
     setTimeout(function () {
-      taskRefs.value[task.id].focus();
+      taskRefs[task.id].focus();
     });
   }
 }
@@ -123,7 +112,7 @@ function taskMoveBottom(task: Task, index: number, focus: boolean = false) {
   tasks.value.push(task);
   if (focus) {
     setTimeout(function () {
-      taskRefs.value[task.id].focus();
+      taskRefs[task.id].focus();
     });
   }
 }
@@ -133,7 +122,7 @@ function taskFocusUp(index: number) {
     return;
   }
   const task = tasks.value[index - 1];
-  taskRefs.value[task.id].focus();
+  taskRefs[task.id].focus();
 }
 
 function taskFocusDown(index: number) {
@@ -141,21 +130,22 @@ function taskFocusDown(index: number) {
     return;
   }
   const task = tasks.value[index + 1];
-  taskRefs.value[task.id].focus();
+  taskRefs[task.id].focus();
 }
 
 function taskInputKey(task: Task, index: number, event: KeyboardEvent) {
   console.log('taskInputKey', event)
   if (!event.altKey && !event.shiftKey && !event.ctrlKey && event.key === 'PageUp') {
-    taskRefs.value[tasks.value[0].id].focus();
+    taskRefs[tasks.value[0].id].focus();
   } else if (!event.altKey && !event.shiftKey && !event.ctrlKey && event.key === 'PageDown') {
-    taskRefs.value[tasks.value[tasks.value.length - 1].id].focus();
+    taskRefs[tasks.value[tasks.value.length - 1].id].focus();
   } else if (event.altKey && !event.shiftKey && !event.ctrlKey && event.key === 'Delete') {
     taskDelete(task, index, true);
   }
 }
 
-function appCtrlUp(event: KeyboardEvent) {
+function appKeyUp(event: KeyboardEvent) {
+  console.log('appKeyUp', event);
   if (event.ctrlKey && !event.shiftKey && !event.altKey && event.key === 'z') {
     event.preventDefault();
     undo();
@@ -163,14 +153,17 @@ function appCtrlUp(event: KeyboardEvent) {
     event.preventDefault();
     // FIXME:
     redo();
+  } else if (event.ctrlKey && !event.shiftKey && !event.altKey && event.key === 's') {
+    event.preventDefault();
+    tasksReorder();
   }
 }
 
 onMounted(() => {
-  document.addEventListener("keyup", appCtrlUp);
+  document.addEventListener("keyup", appKeyUp);
 });
 onUnmounted(() => {
-  document.removeEventListener("keyup", appCtrlUp);
+  document.removeEventListener("keyup", appKeyUp);
 });
 
 </script>
@@ -180,6 +173,8 @@ onUnmounted(() => {
   <div class="history">
     <button :disabled="!canUndo" @click="undo">&laquo; undo</button>
     <button :disabled="!canRedo" @click="redo">redo &raquo;</button>
+    |
+    <button @click="tasksReorder">sort</button>
   </div>
   <ul>
     <li
@@ -215,9 +210,9 @@ onUnmounted(() => {
         </button>
       </div>
       <div class="content">
-        <input :ref="(el) => setItemRef(task, el)"
+        <input :ref="(el) => setItemRef(task, el as HTMLInputElement)"
                v-model="task.title"
-               @keydown="taskInputKey(task, index, $event)"
+               @keydown.exact="taskInputKey(task, index, $event)"
                @keydown.ctrl.enter.prevent.stop.exact="taskCheck(task, index, true)"
                @keydown.enter.prevent.stop.exact="taskFocusDown(index)"
                @keydown.ctrl.up.prevent.stop.exact="taskMoveUp(task, index, true)"
@@ -228,6 +223,7 @@ onUnmounted(() => {
       </div>
     </li>
   </ul>
+  <HelpBlock/>
 </template>
 
 <style scoped>
