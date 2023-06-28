@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {onMounted, onUnmounted, reactive, ref} from "vue";
+import {nextTick, onMounted, onUnmounted, reactive, ref} from "vue";
 import {useRefHistory} from "@vueuse/core";
 import HelpBlock from "@/components/HelpBlock.vue";
 import Task from "@/models/task"
@@ -26,7 +26,19 @@ function setItemRef(task: Task, el: HTMLInputElement) {
   taskRefs[task.id] = el;
 }
 
+function findRef(el: Element | null) {
+  if (el) {
+    for (let taskId in taskRefs) {
+      if (taskRefs[taskId] === el) {
+        return tasks.value.find(task => task.id === taskId) as Task;
+      }
+    }
+  }
+  return null;
+}
+
 function tasksReorder() {
+  let task: Task | null = findRef(document.activeElement);
   tasks.value = tasks.value.sort(function (taskA: Task, taskB: Task) {
     if (!taskA.done && taskB.done) {
       return 1;
@@ -36,23 +48,15 @@ function tasksReorder() {
     }
     return 0;
   });
+  if (task) {
+    nextTick(() => {
+      taskRefs[task!.id].focus();
+    });
+  }
 }
 
 function taskCheck(task: Task, index: number, focus: boolean = false) {
-  console.log('taskCheck', task.done, task); // TODO: @ihoru
-  const isDone = task.done;
   task.done = !task.done;
-  if (!isDone) {
-    setTimeout(() => {
-      const newTask = tasks.value[index];
-      if (newTask.id !== task.id) {
-        taskRefs[newTask.id].focus();
-      }
-    });
-  }
-
-  // tasks.value.splice(index, 1);
-  // console.log(history)
 }
 
 function taskDelete(task: Task, index: number, focus: boolean = false) {
@@ -68,7 +72,7 @@ function taskMoveUp(task: Task, index: number, focus: boolean = false) {
   tasks.value[index] = tasks.value[index - 1];
   tasks.value[index - 1] = task;
   if (focus) {
-    setTimeout(function () {
+    nextTick(function () {
       taskRefs[task.id].focus();
     });
   }
@@ -81,7 +85,7 @@ function taskMoveDown(task: Task, index: number, focus: boolean = false) {
   tasks.value[index] = tasks.value[index + 1];
   tasks.value[index + 1] = task;
   if (focus) {
-    setTimeout(function () {
+    nextTick(function () {
       taskRefs[task.id].focus();
     });
   }
@@ -97,7 +101,7 @@ function taskMoveTop(task: Task, index: number, focus: boolean = false) {
   tasks.value.splice(index, 1);
   tasks.value = [task, ...tasks.value];
   if (focus) {
-    setTimeout(function () {
+    nextTick(function () {
       taskRefs[task.id].focus();
     });
   }
@@ -111,7 +115,7 @@ function taskMoveBottom(task: Task, index: number, focus: boolean = false) {
   tasks.value.splice(index, 1);
   tasks.value.push(task);
   if (focus) {
-    setTimeout(function () {
+    nextTick(function () {
       taskRefs[task.id].focus();
     });
   }
@@ -133,30 +137,82 @@ function taskFocusDown(index: number) {
   taskRefs[task.id].focus();
 }
 
+function taskAdd(index: number) {
+  const task = new Task(randomId(), '')
+  tasks.value.splice(index, 0, task);
+  nextTick(function () {
+    taskRefs[task.id].focus();
+  });
+}
+
+function taskPaste(task: Task, index: number, event: ClipboardEvent) {
+  index += 1;
+  const text = event.clipboardData?.getData('text/plain');
+  if (text) {
+    const lines = text.split('\n');
+    if (lines.length > 1) {
+      const tasksToAdd = lines.map(line => new Task(randomId(), line.trim()));
+      tasks.value.splice(index, 0, ...tasksToAdd);
+      nextTick(function () {
+        taskRefs[tasksToAdd[0].id].focus();
+      });
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+}
+
 function taskInputKey(task: Task, index: number, event: KeyboardEvent) {
   console.log('taskInputKey', event)
-  if (!event.altKey && !event.shiftKey && !event.ctrlKey && event.key === 'PageUp') {
+  const onlyAlt = event.altKey && !event.shiftKey && !event.ctrlKey;
+  const onlyCtrl = !event.altKey && !event.shiftKey && event.ctrlKey;
+  const onlyShift = !event.altKey && event.shiftKey && !event.ctrlKey;
+  const noSpecial = !event.altKey && !event.shiftKey && !event.ctrlKey;
+  if (noSpecial && event.key === 'PageUp') {
     taskRefs[tasks.value[0].id].focus();
-  } else if (!event.altKey && !event.shiftKey && !event.ctrlKey && event.key === 'PageDown') {
+  } else if (noSpecial && event.key === 'PageDown') {
     taskRefs[tasks.value[tasks.value.length - 1].id].focus();
-  } else if (event.altKey && !event.shiftKey && !event.ctrlKey && event.key === 'Delete') {
+  } else if (onlyCtrl && event.key === 'Enter') {
+    taskCheck(task, index, true);
+  } else if (onlyAlt && event.key === 'Delete') {
     taskDelete(task, index, true);
+  } else if (onlyCtrl && event.key === 'ArrowUp') {
+    taskMoveUp(task, index, true);
+  } else if (onlyCtrl && event.key === 'ArrowDown') {
+    taskMoveDown(task, index, true);
+  } else if (onlyAlt && event.key === 'ArrowUp') {
+    taskMoveTop(task, index, true);
+  } else if (onlyAlt && event.key === 'ArrowDown') {
+    taskMoveBottom(task, index, true);
+  } else if (noSpecial && event.key === 'Enter') {
+    taskFocusDown(index);
+  } else if (onlyShift && event.key === 'Enter') {
+    taskAdd(index);
+  } else if (onlyAlt && event.key === 'Enter') {
+    taskAdd(index + 1);
+  } else if (noSpecial && event.key === 'ArrowUp') {
+    taskFocusUp(index);
+  } else if (noSpecial && event.key === 'ArrowDown') {
+    taskFocusDown(index);
+  } else {
+    return;
   }
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 function appKeyUp(event: KeyboardEvent) {
   console.log('appKeyUp', event);
-  if (event.ctrlKey && !event.shiftKey && !event.altKey && event.key === 'z') {
-    event.preventDefault();
+  if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyZ') {
     undo();
-  } else if (event.ctrlKey && event.shiftKey && !event.altKey && event.key === 'z') {
-    event.preventDefault();
-    // FIXME:
+  } else if (event.ctrlKey && event.shiftKey && !event.altKey && event.code === 'KeyZ') {
     redo();
-  } else if (event.ctrlKey && !event.shiftKey && !event.altKey && event.key === 's') {
-    event.preventDefault();
+  } else if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyS') {
     tasksReorder();
+  } else {
+    return;
   }
+  event.preventDefault();
 }
 
 onMounted(() => {
@@ -212,13 +268,8 @@ onUnmounted(() => {
       <div class="content">
         <input :ref="(el) => setItemRef(task, el as HTMLInputElement)"
                v-model="task.title"
-               @keydown.exact="taskInputKey(task, index, $event)"
-               @keydown.ctrl.enter.prevent.stop.exact="taskCheck(task, index, true)"
-               @keydown.enter.prevent.stop.exact="taskFocusDown(index)"
-               @keydown.ctrl.up.prevent.stop.exact="taskMoveUp(task, index, true)"
-               @keydown.ctrl.down.prevent.stop.exact="taskMoveDown(task, index, true)"
-               @keydown.up.prevent.stop.exact="taskFocusUp(index)"
-               @keydown.down.prevent.stop.exact="taskFocusDown(index)"
+               @keydown="taskInputKey(task, index, $event)"
+               @paste="taskPaste(task, index, $event)"
         />
       </div>
     </li>
