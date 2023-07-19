@@ -172,7 +172,7 @@ function taskInputKey(task: Task, index: number, event: KeyboardEvent) {
     taskRefs[tasks.value[0].id].focus();
   } else if (noSpecial && event.key === 'PageDown') {
     taskRefs[tasks.value[tasks.value.length - 1].id].focus();
-  } else if (onlyCtrl && event.key === 'Enter') {
+  } else if (noSpecial && event.key === 'Enter') {
     taskCheck(task, index, true);
   } else if (onlyAlt && event.key === 'Delete') {
     taskDelete(task, index, true);
@@ -184,11 +184,9 @@ function taskInputKey(task: Task, index: number, event: KeyboardEvent) {
     taskMoveTop(task, index, true);
   } else if (onlyAlt && event.key === 'ArrowDown') {
     taskMoveBottom(task, index, true);
-  } else if (noSpecial && event.key === 'Enter') {
-    taskFocusDown(index);
   } else if (onlyShift && event.key === 'Enter') {
     taskAdd(index);
-  } else if (onlyAlt && event.key === 'Enter') {
+  } else if (onlyCtrl && event.key === 'Enter') {
     taskAdd(index + 1);
   } else if (noSpecial && event.key === 'ArrowUp') {
     taskFocusUp(index);
