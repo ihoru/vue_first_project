@@ -1,4 +1,4 @@
-# vue_first_project
+# vue_playground
 
 This template should help get you started developing with Vue 3 in Vite.
 
